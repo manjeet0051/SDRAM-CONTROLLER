@@ -122,3 +122,162 @@ vvp timing_manager
 
 All timing manager tests passed.
 ```
+## ✅ Phase 3: SDRAM Initialization FSM
+**RTL:** `rtl/init_fsm.sv`  
+**Testbench:** `tb/tb_init_fsm.sv`
+
+### Description
+Implemented an initialization finite state machine (FSM) that performs the JEDEC-compliant SDRAM power-up sequence. The FSM coordinates startup delays and generates the required SDRAM commands before enabling normal memory transactions.
+
+### Initialization Sequence
+```text
+RESET
+  ↓
+WAIT_100US
+  ↓
+PRECHARGE_ALL
+  ↓
+AUTO_REFRESH
+  ↓
+AUTO_REFRESH
+  ↓
+LOAD_MODE_REGISTER
+  ↓
+INIT_DONE
+```
+
+### Generated Commands
+| State | Command |
+|------|---------|
+| WAIT_100US | NOP |
+| PRECHARGE | PRECHARGE ALL |
+| REFRESH1 | AUTO REFRESH |
+| REFRESH2 | AUTO REFRESH |
+| LOAD_MODE | LOAD MODE REGISTER |
+| DONE | NOP + init_done = 1 |
+
+### Interface
+
+
+#### Inputs
+- `clk` : System clock
+- `rst` : Active-high reset
+- `timer_done` : Indicates completion of the required delay
+
+
+#### Outputs
+- `cmd[2:0]` : Encoded SDRAM command
+- `timer_start` : Starts a timing delay
+- `timer_cycles[7:0]` : Number of cycles to wait
+- `init_done` : Asserted when initialization is complete
+
+### Verification
+Implemented a self-checking testbench that verifies:
+- Correct reset behavior
+- Correct state transitions
+- Correct command generation sequence
+- Proper interaction with the timing interface
+- Assertion of `init_done` after completing initialization
+
+### Run Simulation
+
+```bash
+cd results
+vvp init_fsm
+```
+
+### Simulation Result
+```text
+t=0      cmd=0 start=1 cycles=100 init_done=0
+t=45000  cmd=4 start=0 cycles=0 init_done=0
+t=55000  cmd=5 start=0 cycles=0 init_done=0
+t=65000  cmd=5 start=0 cycles=0 init_done=0
+t=75000  cmd=6 start=0 cycles=0 init_done=0
+t=85000  cmd=0 start=0 cycles=0 init_done=1
+
+[PASS] Initialization Completed
+```
+## ✅ Phase 4: Refresh Timer
+**RTL:** `rtl/refresh_timer.sv`  
+**Testbench:** `tb/tb_refresh_timer.sv`
+
+### Description
+Implemented a programmable refresh timer that periodically generates refresh requests for the SDRAM controller. The module counts clock cycles and asserts `refresh_req` after a predefined refresh interval. The request remains asserted until the refresh operation is acknowledged.
+
+### Reason
+SDRAM cells store data as charge in capacitors, which gradually leak over time. Therefore, every row must be refreshed periodically to prevent data loss.
+
+### Functionality
+```text
+counter++
+     |
+     v
+counter == REFRESH_PERIOD ?
+     |
+    Yes
+     |
+     v
+refresh_req = 1
+     |
+     v
+refresh_fsm performs refresh
+     |
+     v
+refresh_ack = 1
+     |
+     v
+counter = 0
+refresh_req = 0
+```
+
+### Interface
+
+#### Inputs
+- `clk` : System clock
+- `rst` : Active-high reset
+- `refresh_ack` : Indicates completion of the refresh operation
+
+#### Outputs
+- `refresh_req` : Requests a refresh operation
+
+### Parameter
+- `REFRESH_PERIOD` : Number of clock cycles between consecutive refresh requests.
+
+### Verification
+Implemented a self-checking SystemVerilog testbench that verifies:
+- Generation of `refresh_req` after the programmed interval.
+- Proper clearing of `refresh_req` upon receiving `refresh_ack`.
+- Counter restart after acknowledgement.
+- Periodic generation of subsequent refresh requests.
+
+### Run Simulation
+
+```bash
+cd results
+vvp refresh_timer
+```
+
+### Simulation Result
+```text
+[PASS] Refresh request generated
+[PASS] Refresh request cleared
+[PASS] Second refresh request generated
+
+All refresh timer tests passed.
+```
+
+### Integration in Controller
+```text
+refresh_timer
+      |
+      | refresh_req
+      v
+    arbiter
+      |
+      v
+  refresh_fsm
+      |
+      | refresh_ack
+      v
+refresh_timer
+```
