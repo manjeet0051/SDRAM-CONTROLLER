@@ -281,3 +281,120 @@ refresh_timer
       v
 refresh_timer
 ```
+## ✅ Phase 5: Refresh FSM
+**RTL:** `rtl/refresh_fsm.sv`  
+**Testbench:** `tb/tb_refresh_fsm.sv`
+
+### Description
+Implemented a finite state machine (FSM) that executes the SDRAM refresh sequence. The FSM responds to periodic refresh requests, issues the required SDRAM commands, waits for the refresh recovery time (`tRFC`), and generates a refresh acknowledgement upon completion.
+
+### Motivation
+SDRAM stores data as charge in capacitors, which gradually leaks over time. To preserve data integrity, the memory must be refreshed periodically. The Refresh FSM performs this protocol-compliant refresh operation.
+
+### Refresh Sequence
+```text
+REFRESH_REQ
+      ↓
+PRECHARGE ALL
+      ↓
+AUTO REFRESH
+      ↓
+wait tRFC
+      ↓
+REFRESH_ACK
+      ↓
+IDLE
+```
+
+### State Diagram
+```text
+IDLE
+ |
+ | refresh_req
+ v
+PRECHARGE
+ |
+ v
+REFRESH
+ |
+ v
+WAIT_TRFC
+ |
+ | timer_done
+ v
+DONE
+ |
+ v
+IDLE
+```
+
+### Interface
+
+#### Inputs
+- `clk` : System clock
+- `rst` : Active-high reset
+- `refresh_req` : Refresh request from `refresh_timer`
+- `timer_done` : Indicates completion of the `tRFC` delay
+
+#### Outputs
+- `cmd[2:0]` : Encoded SDRAM command
+- `timer_start` : Starts the timing manager
+- `timer_cycles[7:0]` : Number of cycles for `tRFC`
+- `refresh_ack` : Indicates refresh completion
+
+### Generated Commands
+| State | Command |
+|-------|----------|
+| IDLE | NOP |
+| PRECHARGE | PRECHARGE ALL |
+| REFRESH | AUTO REFRESH |
+| WAIT_TRFC | NOP |
+| DONE | NOP + `refresh_ack = 1` |
+
+### Interaction with Other Modules
+```text
+refresh_timer
+      |
+      | refresh_req
+      v
+  refresh_fsm
+      |
+      | timer_start, timer_cycles
+      v
+timing_manager
+      |
+      | timer_done
+      v
+  refresh_fsm
+      |
+      | cmd
+      v
+command_encoder
+      |
+      v
+CS_n RAS_n CAS_n WE_n
+```
+
+### Verification
+Implemented a self-checking SystemVerilog testbench that verifies:
+- Correct transition from `IDLE` to `PRECHARGE`
+- Generation of `PRECHARGE ALL`
+- Generation of `AUTO REFRESH`
+- Proper interaction with the timing manager for `tRFC`
+- Assertion of `refresh_ack` after refresh completion
+
+### Run Simulation
+
+```bash
+cd results
+vvp refresh_fsm
+```
+
+### Simulation Result
+```text
+[PASS] PRECHARGE command issued
+[PASS] REFRESH command issued
+[PASS] Refresh acknowledged
+
+All refresh FSM tests passed.
+```
