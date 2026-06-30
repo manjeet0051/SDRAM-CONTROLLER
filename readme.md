@@ -398,3 +398,153 @@ vvp refresh_fsm
 
 All refresh FSM tests passed.
 ```
+## ✅ Phase 6: Address Decoder
+**RTL:** `rtl/address_decoder.sv`  
+**Testbench:** `tb/tb_address_decoder.sv`
+
+### Description
+Implemented a combinational address decoder that translates a linear system address into SDRAM-specific addressing fields: **Bank Address**, **Row Address**, and **Column Address**.
+
+The decoder acts as an interface between the controller and SDRAM by converting CPU-generated addresses into the format required by the SDRAM protocol.
+
+---
+
+### Motivation
+SDRAM does not access memory using a single linear address. Instead, every memory location is identified by:
+
+- Bank Address (BA)
+- Row Address (ROW)
+- Column Address (COL)
+
+Before issuing SDRAM commands such as `ACTIVE`, `READ`, or `WRITE`, the controller must determine which bank, row, and column correspond to the requested address.
+
+---
+
+### Address Mapping
+
+For the assumed SDRAM organization:
+
+- Banks: 4 → 2 bits
+- Rows: 4096 → 12 bits
+- Columns: 256 → 8 bits
+
+Address partition:
+
+```text
+addr[21:20] → Bank Address
+addr[19:8]  → Row Address
+addr[7:0]   → Column Address
+```
+
+---
+
+### Architecture
+
+```text
+System Address (22 bits)
+            |
+            v
+    +-----------------+
+    | Address Decoder |
+    +-----------------+
+            |
+            +---- bank[1:0]
+            +---- row[11:0]
+            +---- col[7:0]
+```
+
+---
+
+### Implementation Details
+
+The decoder is purely combinational and performs simple bit extraction:
+
+```text
+bank = addr[21:20]
+row  = addr[19:8]
+col  = addr[7:0]
+```
+
+No clock, state machine, or counters are required.
+
+---
+
+### Interface
+
+#### Inputs
+- `addr[21:0]` : Linear system address
+
+#### Outputs
+- `bank[1:0]` : SDRAM bank number
+- `row[11:0]` : SDRAM row address
+- `col[7:0]` : SDRAM column address
+
+---
+
+### Run Simulation
+
+```bash
+cd results
+vvp address_decoder
+```
+
+### Verification
+
+Implemented a self-checking SystemVerilog testbench that verified:
+
+- Correct bank extraction
+- Correct row extraction
+- Correct column extraction
+- Boundary addresses
+- Arbitrary addresses
+
+Simulation Output:
+
+```text
+[PASS] addr=000000 -> bank=0 row=0 col=0
+[PASS] addr=123456 -> bank=1 row=564 col=86
+[PASS] addr=2abcde -> bank=2 row=2748 col=222
+[PASS] addr=3fffff -> bank=3 row=4095 col=255
+
+All address decoder tests passed.
+```
+
+---
+
+### Integration with Controller
+
+The decoded outputs will be used by the Read/Write FSM:
+
+```text
+CPU Request
+      |
+      v
+Address Decoder
+      |
+      +---- bank
+      +---- row
+      +---- column
+      |
+      v
+Read/Write FSM
+```
+
+Example:
+
+```text
+Address = 0x123456
+
+Decoded Outputs:
+Bank   = 1
+Row    = 564
+Column = 86
+```
+
+The Read/Write FSM can then execute:
+
+```text
+ACTIVE Bank 1, Row 564
+READ/WRITE Column 86
+```
+
+---
